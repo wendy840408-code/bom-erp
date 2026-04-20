@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -16,7 +17,15 @@ import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-ap
 import{getDatabase,ref,onValue,set,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ★★★ 換成你的 Firebase 設定 ★★★
-const firebaseConfig = {  apiKey: "AIzaSyCGgW3sGXyBke2_32Yt6Fr3zRwKZZM5ffo",  authDomain: "connector-bom-erp.firebaseapp.com",  databaseURL: "https://connector-bom-erp-default-rtdb.asia-southeast1.firebasedatabase.app",  projectId: "connector-bom-erp",  storageBucket: "connector-bom-erp.firebasestorage.app",  messagingSenderId: "114233235586",  appId: "1:114233235586:web:d54a99c89d60b5218afc9b",  measurementId: "G-0CYDSVTQDK"
+const firebaseConfig={
+  apiKey:"AIzaSyCGgW3sGXyBke2_32Yt6Fr3zRwKZZM5ffo",
+  authDomain:"connector-bom-erp.firebaseapp.com",
+  databaseURL:"https://connector-bom-erp-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"connector-bom-erp",
+  storageBucket:"connector-bom-erp.firebasestorage.app",
+  messagingSenderId:"114233235586",
+  appId:"1:114233235586:web:d54a99c89d60b5218afc9b",
+  measurementId:"G-0CYDSVTQDK"
 };
 
 let db=null;
@@ -464,7 +473,7 @@ window.closeDefect=function(id){
 window.delDefect=function(id){if(!confirm('刪除?'))return;fbDel('defects',id);};
 
 // ─── PRINT ────────────────────────────────────────────────
-function esc(v){return String(v??'').replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;"}[m]));}
+function esc(v){const s=String(v??'');return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmtDateLong(v){if(!v)return '—'; const d=new Date(v); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
 function openPrintWindow(title,bodyHtml){
   const w=window.open('','_blank','width=980,height=760');
@@ -817,16 +826,21 @@ window.filterTb=function(tbId,q){
   });
 };
 
-syncAll();
-
-// show setup banner if local
-window.addEventListener('load',()=>{
+window.initERP=function(){
+  syncAll();
   setTimeout(()=>{
     if(!window._fbReady){
       const b=G('setup-banner');if(b)b.style.display='flex';
     }
-  },800);
-});
+  },300);
+};
+
+if(document.readyState==='loading'){
+  window.addEventListener('DOMContentLoaded',window.initERP,{once:true});
+}else{
+  window.initERP();
+}
+
 </script>
 
 <style>
