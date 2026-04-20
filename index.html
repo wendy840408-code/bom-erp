@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -36,13 +35,16 @@ const COLLECTIONS=['parts','subassy','boms','orders','suppliers','inventory','de
 function fkey(k){return String(k).replace(/[.#$/\[\]\s]/g,'_');}
 
 window.fbSet=function(col,key,obj){
-  if(!window._fbReady){lSave();return;}
+  if(!window.D[col])window.D[col]={};
+  window.D[col][fkey(key)]=obj;
+  if(!window._fbReady){lSave();renderAll();setSyncMsg('本機模式已儲存',1500);return;}
   set(ref(db,`${col}/${fkey(key)}`),obj)
     .then(()=>setSyncMsg('已儲存',1500))
     .catch(e=>setSyncMsg('錯誤: '+e.code,3000));
 };
 window.fbDel=function(col,key){
-  if(!window._fbReady){lSave();return;}
+  if(window.D[col])delete window.D[col][fkey(key)];
+  if(!window._fbReady){lSave();renderAll();setSyncMsg('本機模式已刪除',1500);return;}
   remove(ref(db,`${col}/${fkey(key)}`)).then(()=>setSyncMsg('已刪除',1500));
 };
 
@@ -214,55 +216,91 @@ window.delBom=function(id){if(!confirm('刪除BOM '+id+'？'))return;fbDel('boms
 
 // ─── 選料件/半成品 Picker ──────────────────────────────────
 let _pickerTarget='bom';
+window._pickerSelected={};
 function openPartPickerFor(target){
   _pickerTarget=target;
+  window._pickerSelected={};
+  const title=G('picker-title');
+  if(title)title.textContent=target==='bom'?'選擇要加入 BOM 的項目':'選擇要加入半成品的零件';
   renderPickerList('');
   G('picker-q').value='';
+  updatePickerSummary();
   openM('m-picker');
 }
 function renderPickerList(q){
   const el=G('picker-list');if(!el)return;
-  const ql=q.toLowerCase();
+  const ql=(q||'').toLowerCase();
   let html='';
-  // 零件
-  arr(window.D.parts).filter(p=>!q||p.id.toLowerCase().includes(ql)||p.name.toLowerCase().includes(ql)).forEach(p=>{
-    html+=`<div class="picker-row" onclick="pickItem('part','${p.id}')">
-      <div style="display:flex;align-items:center;gap:6px">
-        <span class="badge badge-gray" style="font-size:10px">零件</span>
-        <strong>${p.id}</strong>
-      </div>
-      <div style="font-size:12px;color:var(--t2)">${p.name}${p.spec?' · '+p.spec:''}</div>
-      <div style="font-size:11px;color:var(--t3)">${p.supplier||''} · 進價 NT$${p.buy||0} · LT ${p.lt}天</div>
-    </div>`;
-  });
-  // 半成品（只在BOM picker時顯示）
-  if(_pickerTarget==='bom'){
-    arr(window.D.subassy).filter(s=>!q||s.id.toLowerCase().includes(ql)||s.name.toLowerCase().includes(ql)).forEach(s=>{
-      html+=`<div class="picker-row" onclick="pickItem('subassy','${s.id}')">
-        <div style="display:flex;align-items:center;gap:6px">
-          <span class="badge badge-blue" style="font-size:10px">半成品</span>
-          <strong>${s.id}</strong>
+  const parts=arr(window.D.parts).filter(p=>!q||p.id.toLowerCase().includes(ql)||(p.name||'').toLowerCase().includes(ql)||(p.spec||'').toLowerCase().includes(ql));
+  parts.forEach(p=>{
+    const checked=window._pickerSelected['part::'+p.id]?'checked':'';
+    html+=`<label class="picker-row picker-check">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <input type="checkbox" ${checked} onchange="togglePickerItem('part','${p.id}',this.checked)">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span class="badge badge-gray" style="font-size:10px">零件</span>
+            <strong>${p.id}</strong>
+          </div>
+          <div style="font-size:12px;color:var(--t2)">${p.name||''}${p.spec?' · '+p.spec:''}</div>
+          <div style="font-size:11px;color:var(--t3)">${p.supplier||''} · 進價 NT$${p.buy||0} · LT ${p.lt}天</div>
         </div>
-        <div style="font-size:12px;color:var(--t2)">${s.name}${s.spec?' · '+s.spec:''}</div>
-        <div style="font-size:11px;color:var(--t3)">LT ${s.lt}天 · ${s.lines?s.lines.length:0}種零件</div>
-      </div>`;
+      </div>
+    </label>`;
+  });
+  if(_pickerTarget==='bom'){
+    const subs=arr(window.D.subassy).filter(sa=>!q||sa.id.toLowerCase().includes(ql)||(sa.name||'').toLowerCase().includes(ql)||(sa.spec||'').toLowerCase().includes(ql));
+    subs.forEach(sa=>{
+      const checked=window._pickerSelected['subassy::'+sa.id]?'checked':'';
+      html+=`<label class="picker-row picker-check">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <input type="checkbox" ${checked} onchange="togglePickerItem('subassy','${sa.id}',this.checked)">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span class="badge badge-blue" style="font-size:10px">半成品</span>
+              <strong>${sa.id}</strong>
+            </div>
+            <div style="font-size:12px;color:var(--t2)">${sa.name||''}${sa.spec?' · '+sa.spec:''}</div>
+            <div style="font-size:11px;color:var(--t3)">LT ${sa.lt||0}天 · ${(sa.lines||[]).length}種零件</div>
+          </div>
+        </div>
+      </label>`;
     });
   }
   el.innerHTML=html||'<div style="text-align:center;padding:24px;color:var(--t3)">沒有符合的結果</div>';
 }
 window.filterPicker=function(q){renderPickerList(q);};
-window.pickItem=function(type,itemId){
-  const target=_pickerTarget;
-  if(target==='bom'){
-    if(window._bomLines.find(l=>l.itemId===itemId)){alert('已在BOM中');return;}
-    window._bomLines.push({type,itemId,qty:1});
+window.togglePickerItem=function(type,itemId,checked){
+  const key=`${type}::${itemId}`;
+  if(checked) window._pickerSelected[key]={type,itemId};
+  else delete window._pickerSelected[key];
+  updatePickerSummary();
+};
+window.updatePickerSummary=function(){
+  const count=Object.keys(window._pickerSelected||{}).length;
+  const el=G('picker-summary');
+  if(el)el.textContent=count?`已選 ${count} 項`:'尚未選擇項目';
+};
+window.confirmPickerSelection=function(){
+  const selected=Object.values(window._pickerSelected||{});
+  if(!selected.length){alert('請先勾選要加入的項目');return;}
+  if(_pickerTarget==='bom'){
+    selected.forEach(({type,itemId})=>{
+      if(!window._bomLines.find(l=>l.itemId===itemId)) window._bomLines.push({type,itemId,qty:1});
+    });
     renderBomLines();
-  }else if(target==='sa'){
-    if(window._saLines.find(l=>l.partId===itemId)){alert('已在清單中');return;}
-    window._saLines.push({partId:itemId,qty:1});
+  }else if(_pickerTarget==='sa'){
+    selected.forEach(({itemId})=>{
+      if(!window._saLines.find(l=>l.partId===itemId)) window._saLines.push({partId:itemId,qty:1});
+    });
     renderSaLines();
   }
   closeM('m-picker');
+};
+// 保留相容舊事件
+window.pickItem=function(type,itemId){
+  window._pickerSelected={[`${type}::${itemId}`]:{type,itemId}};
+  confirmPickerSelection();
 };
 
 // ─── ORDERS ───────────────────────────────────────────────
@@ -424,6 +462,75 @@ window.closeDefect=function(id){
   fbSet('defects',id,{...d,status:'已結案',closed:today()});
 };
 window.delDefect=function(id){if(!confirm('刪除?'))return;fbDel('defects',id);};
+
+// ─── PRINT ────────────────────────────────────────────────
+function esc(v){return String(v??'').replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;"}[m]));}
+function fmtDateLong(v){if(!v)return '—'; const d=new Date(v); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;}
+function openPrintWindow(title,bodyHtml){
+  const w=window.open('','_blank','width=980,height=760');
+  if(!w){alert('瀏覽器封鎖了列印視窗，請允許彈出視窗');return;}
+  w.document.write(`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>${esc(title)}</title><style>
+    body{font-family:Arial,"Noto Sans TC",sans-serif;color:#111;padding:24px;line-height:1.45}
+    h1{font-size:24px;margin:0 0 8px} h2{font-size:16px;margin:18px 0 8px}
+    .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 20px;margin:14px 0 18px}
+    .meta div{font-size:13px}.label{color:#666;font-size:12px;margin-right:6px}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+    th,td{border:1px solid #bbb;padding:6px 8px;text-align:left;vertical-align:top}
+    th{background:#f3f3f3} .sign{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-top:28px}
+    .sign div{padding-top:28px;border-top:1px solid #999;text-align:center;font-size:12px}
+    .note{margin-top:14px;font-size:12px;white-space:pre-wrap}.topline{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+    @media print{body{padding:0 6mm} button{display:none}}
+  </style></head><body>${bodyHtml}<script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+window.printOrder=function(id){
+  const o=window.D.orders[id]; if(!o){alert('找不到工單');return;}
+  const bom=window.D.boms[o.bomId]||{};
+  const lines=(bom.lines||[]).map((ln,i)=>{
+    const item=ln.type==='subassy'?window.D.subassy[ln.itemId]:window.D.parts[ln.itemId];
+    return `<tr><td>${i+1}</td><td>${esc(ln.type==='subassy'?'半成品':'零件')}</td><td>${esc(ln.itemId)}</td><td>${esc(item?.name||'')}</td><td>${esc(item?.spec||'—')}</td><td>${ln.qty}</td><td>${esc(item?.unit||'PCS')}</td></tr>`;
+  }).join('') || '<tr><td colspan="7">無 BOM 項目</td></tr>';
+  const stations=(o.stations||[]).map((st,i)=>`<tr><td>${i+1}</td><td>${esc(st.name||'')}</td><td>${esc(st.type||'')}</td><td>${esc(st.factory||'—')}</td><td>${fmtDateLong(st.dateStart)}</td><td>${fmtDateLong(st.dateEnd)}</td><td>${esc(st.status||'')}</td></tr>`).join('') || '<tr><td colspan="7">無製程站</td></tr>';
+  openPrintWindow(`工單 ${o.id}`,`
+    <div class="topline"><div><h1>工單</h1><div>Work Order</div></div><div>工單號：<strong>${esc(o.id)}</strong></div></div>
+    <div class="meta">
+      <div><span class="label">客戶</span>${esc(o.customer||'—')}</div>
+      <div><span class="label">建立日</span>${fmtDateLong(o.issueDate)}</div>
+      <div><span class="label">BOM</span>${esc(o.bomId||'—')} ${esc(bom.name||'')}</div>
+      <div><span class="label">交期</span>${fmtDateLong(o.due)}</div>
+      <div><span class="label">需求數量</span>${esc(o.qty||0)}</div>
+      <div><span class="label">預計出貨數量</span>${esc(o.shipQty||0)}</div>
+      <div><span class="label">客供料</span>${o.custSupply?'是':'否'}</div>
+      <div><span class="label">客供料日期</span>${fmtDateLong(o.custEta)}</div>
+    </div>
+    <h2>BOM 明細</h2><table><thead><tr><th>#</th><th>類型</th><th>料號</th><th>品名</th><th>規格</th><th>用量</th><th>單位</th></tr></thead><tbody>${lines}</tbody></table>
+    <h2>製程站</h2><table><thead><tr><th>#</th><th>站別</th><th>類型</th><th>外發工廠</th><th>開始</th><th>預計完成</th><th>狀態</th></tr></thead><tbody>${stations}</tbody></table>
+    <div class="note"><span class="label">備註</span>${esc(o.note||'—')}</div>
+    <div class="sign"><div>製單</div><div>生管</div><div>主管</div></div>
+  `);
+};
+window.printDefect=function(id){
+  const d=window.D.defects[id]; if(!d){alert('找不到退貨單');return;}
+  const order=window.D.orders[d.orderId]||{};
+  openPrintWindow(`退貨單 ${d.id}`,`
+    <div class="topline"><div><h1>退貨單</h1><div>Return / Defect Form</div></div><div>退貨單號：<strong>${esc(d.id)}</strong></div></div>
+    <div class="meta">
+      <div><span class="label">相關工單</span>${esc(d.orderId||'—')}</div>
+      <div><span class="label">客戶</span>${esc(order.customer||'—')}</div>
+      <div><span class="label">退貨類型</span>${esc(d.type||'—')}</div>
+      <div><span class="label">狀態</span>${esc(d.status||'—')}</div>
+      <div><span class="label">退貨對象</span>${esc(d.target||'—')}</div>
+      <div><span class="label">建立日</span>${fmtDateLong(d.created)}</div>
+      <div><span class="label">不良數量</span>${esc(d.qty||0)}</div>
+      <div><span class="label">預計補貨/補修日</span>${fmtDateLong(d.eta)}</div>
+    </div>
+    <h2>不良說明</h2>
+    <table><tbody>
+      <tr><th style="width:160px">不良原因</th><td>${esc(d.reason||'—')}</td></tr>
+    </tbody></table>
+    <div class="sign"><div>填單</div><div>品保</div><div>廠商/外發簽收</div></div>
+  `);
+};
 
 // ─── RENDER ────────────────────────────────────────────────
 const STAGE_CLS={準備中:'info',進行中:'warn',已完成:'done',等待中:'gray',完成:'ok'};
@@ -620,6 +727,7 @@ function renderOrders(){
       </td>
       <td>${fmtD(o.due)}</td>
       <td>
+        <button class="btn btn-sm" onclick="printOrder('${o.id}')">列印</button>
         <button class="btn btn-sm" onclick="openOrderModal('${o.id}')">編輯</button>
         <button class="btn btn-sm btn-danger" onclick="delOrder('${o.id}')">刪除</button>
       </td>
@@ -637,6 +745,7 @@ function renderDefects(){
     <td>${fmtD(d.eta)}</td>
     <td>${d.status==='已結案'?badge('已結案','done'):badge('處理中','warn')}</td>
     <td>
+      <button class="btn btn-sm" onclick="printDefect('${d.id}')">列印</button>
       ${d.status!=='已結案'?`<button class="btn btn-sm btn-primary" onclick="closeDefect('${d.id}')">結案</button>`:''}
       <button class="btn btn-sm" onclick="openDefectModal('${d.id}')">編輯</button>
       <button class="btn btn-sm btn-danger" onclick="delDefect('${d.id}')">刪除</button>
@@ -814,6 +923,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--bg1)}
 /* picker */
 .picker-row{padding:10px 12px;cursor:pointer;border-radius:var(--r);margin-bottom:3px;border:0.5px solid transparent;transition:background .1s}
 .picker-row:hover{background:var(--bg1);border-color:var(--border)}
+.picker-check input{margin-top:2px;flex-shrink:0}
 /* setup banner */
 .setup-banner{background:#FAEEDA;border:0.5px solid #FAC775;border-radius:var(--r);padding:11px 15px;margin-bottom:16px;font-size:13px;color:#633806;line-height:1.8;display:none;align-items:flex-start;gap:8px}
 .setup-banner code{background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px;font-size:12px;font-family:monospace}
@@ -1052,11 +1162,12 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--bg1)}
 </div></div>
 
 <!-- 料件/半成品 Picker -->
-<div class="modal-bg" id="m-picker"><div class="modal" style="width:480px">
-  <h3>選擇料件</h3>
+<div class="modal-bg" id="m-picker"><div class="modal" style="width:560px">
+  <h3 id="picker-title">選擇料件</h3>
   <input class="search-input" id="picker-q" placeholder="搜尋料號、品名..." oninput="filterPicker(this.value)" style="width:100%;margin-bottom:11px">
   <div id="picker-list" style="max-height:360px;overflow-y:auto"></div>
-  <div class="mf"><button class="btn" onclick="closeM('m-picker')">關閉</button></div>
+  <div style="font-size:12px;color:var(--t3);margin-top:8px" id="picker-summary">尚未選擇項目</div>
+  <div class="mf"><button class="btn" onclick="closeM('m-picker')">取消</button><button class="btn btn-primary" onclick="confirmPickerSelection()">加入選取項目</button></div>
 </div></div>
 
 <!-- 工單 -->
