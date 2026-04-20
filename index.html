@@ -190,7 +190,7 @@ window.openBomModal=function(id){
   window._bomLines=b.lines?JSON.parse(JSON.stringify(b.lines)):[];
   renderBomLines();openM('m-bom');
 };
-window.renderBomLines=function renderBomLines(){
+window.renderBomLines=function(){
   const tb=G('bm-lines');if(!tb)return;
   if(!window._bomLines.length){
     tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--t3)">尚未加入料件，點按鈕新增</td></tr>';
@@ -235,7 +235,7 @@ window.delBom=function(id){if(!confirm('刪除BOM '+id+'？'))return;fbDel('boms
 // ─── 選料件/半成品 Picker ──────────────────────────────────
 let _pickerTarget='bom';
 window._pickerSelected={};
-function openPartPickerFor(target){
+window.openPartPickerFor=function openPartPickerFor(target){
   _pickerTarget=target;
   window._pickerSelected={};
   const title=G('picker-title');
@@ -340,7 +340,7 @@ window.openOrderModal=function(id){
   renderStations();
   openM('m-order');
 };
-function renderStations(){
+window.renderStations=function renderStations(){
   const el=G('stations-list');if(!el)return;
   const supArr=arr(window.D.suppliers);
   if(!window._orderStations.length){
@@ -813,7 +813,7 @@ window.toggleExpand=function(rowId,btnId){
 };
 
 // ─── Modal / Nav helpers ────────────────────────────────────
-window.showSection=function(id,el){
+window._showSection=window.showSection=function(id,el){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   G('section-'+id).classList.add('active');
@@ -1272,5 +1272,17 @@ tr:last-child td{border-bottom:none}tr:hover td{background:var(--bg1)}
   <div class="mf"><button class="btn" onclick="closeM('m-defect')">取消</button><button class="btn btn-primary" onclick="saveDefect()">儲存</button></div>
 </div></div>
 
+
+<!-- ★ 修正：因 <script type="module"> 為非同步載入，HTML inline onclick 可能在函數掛上 window 之前觸發。
+     此段普通 script 提供安全的 wrapper，確保 onclick 不會拋出 ReferenceError。-->
+<script>
+function showSection(id,el){
+  if(typeof window._showSection==='function'){window._showSection(id,el);return;}
+  // module 尚未就緒，等待後重試
+  setTimeout(function(){
+    if(typeof window._showSection==='function')window._showSection(id,el);
+  },50);
+}
+</script>
 </body>
 </html>
